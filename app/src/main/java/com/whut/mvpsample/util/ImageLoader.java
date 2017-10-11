@@ -2,7 +2,6 @@ package com.whut.mvpsample.util;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.util.LruCache;
 import android.widget.ImageView;
 
 import java.net.HttpURLConnection;
@@ -20,34 +19,26 @@ import java.util.concurrent.Executors;
  */
 public class ImageLoader {
     // 图片缓存
-    LruCache<String, Bitmap> mImageCache;
+    ImageCache mImageCache = new ImageCache();
     // 线程池，线程数量为CPU的数量
-    ExecutorService mExecutorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-
-    public ImageLoader() {
-        initImageCache();
-    }
-
-    private void initImageCache() {
-        // 计算可使用的最大内存
-        final int maxMemory = (int) (Runtime.getRuntime().maxMemory() / 1024);
-        // 取四分之一的可用内存作为缓存
-        final int cacheSize = maxMemory / 4;
-        mImageCache = new LruCache<String, Bitmap>(cacheSize) {
-            @Override
-            protected int sizeOf(String key, Bitmap value) {
-                return value.getRowBytes() * value.getHeight() / 1024;
-            }
-        };
-    }
+    ExecutorService mExecutorService = Executors.newFixedThreadPool
+            (Runtime.getRuntime().availableProcessors());
 
     /**
      * 将图片显示在Imageview上
+     *
      * @param url
      * @param imageView
      */
     public void displayImage(final String url, final ImageView imageView) {
-        imageView.setTag(url);
+        Bitmap bitmap = mImageCache.get(url);
+        // 1，从缓存中取图片
+        if (bitmap != null) {
+            imageView.setImageBitmap(bitmap);
+            return;
+        }
+        // 2，开启线程下载图片
+//        imageView.setTag(url);
         mExecutorService.submit(new Runnable() {
             @Override
             public void run() {
@@ -55,9 +46,9 @@ public class ImageLoader {
                 if (bitmap == null) {
                     return;
                 }
-                if (imageView.getTag().equals(url)) {
-                    imageView.setImageBitmap(bitmap);
-                }
+//                if (imageView.getTag().equals(url)) {
+                imageView.setImageBitmap(bitmap);
+//                }
                 mImageCache.put(url, bitmap);
             }
         });
@@ -66,6 +57,7 @@ public class ImageLoader {
 
     /**
      * 下载图片
+     *
      * @param imageUrl
      * @return
      */
@@ -75,6 +67,9 @@ public class ImageLoader {
             URL url = new URL(imageUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             bitmap = BitmapFactory.decodeStream(conn.getInputStream());
+            if (bitmap == null) {
+                throw new Exception("bitmap download 为空");
+            }
             conn.disconnect();
         } catch (Exception e) {
             e.printStackTrace();
